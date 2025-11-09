@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel Staff - GTA RP</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <!-- Page de connexion -->
+    <div id="login-page" class="page active">
+        <div class="login-container">
+            <h1>Panel Staff - GTA RP</h1>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Nom d'utilisateur</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Mot de passe</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Se connecter</button>
+                <div id="login-error" class="error-message"></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Dashboard principal -->
+    <div id="dashboard-page" class="page">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="nav-brand">
+                <h2>Panel Staff GTA RP</h2>
+            </div>
+            <div class="nav-user">
+                <span id="user-info"></span>
+                <button id="logout-btn" class="btn btn-secondary">Déconnexion</button>
+            </div>
+        </nav>
+
+        <!-- Menu des sections -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="dashboard">Tableau de bord</button>
+            <button class="tab-btn" data-tab="sanctions">Sanctions</button>
+            <button class="tab-btn" data-tab="tasks">Tâches</button>
+            <button class="tab-btn" data-tab="announcements">Annonces</button>
+            <button class="tab-btn" data-tab="absences">Absences</button>
+            <button class="tab-btn" data-tab="meetings">Salons de réunion</button>
+            <button class="tab-btn" id="users-tab-btn" data-tab="users" style="display: none;">Utilisateurs</button>
+        </div>
+
+        <!-- Contenu des sections -->
+        <div class="container">
+            <!-- Section Tableau de bord -->
+            <div id="dashboard-tab" class="tab-content active">
+                <h2>Tableau de bord</h2>
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <h3>Sanctions totales</h3>
+                        <p id="total-sanctions" class="stat-number">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Tâches en cours</h3>
+                        <p id="pending-tasks" class="stat-number">0</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Annonces actives</h3>
+                        <p id="total-announcements" class="stat-number">0</p>
+                    </div>
+                </div>
+
+                <div class="recent-activity">
+                    <h3>Mes tâches du jour</h3>
+                    <div id="my-tasks-today"></div>
+                </div>
+
+                <div class="recent-activity">
+                    <h3>Annonces récentes</h3>
+                    <div id="recent-announcements"></div>
+                </div>
+            </div>
+
+            <!-- Section Sanctions -->
+            <div id="sanctions-tab" class="tab-content">
+                <div class="section-header">
+                    <h2>Gestion des sanctions</h2>
+                    <button id="add-sanction-btn" class="btn btn-primary">Ajouter une sanction</button>
+                </div>
+
+                <!-- Filtres -->
+                <div class="filters">
+                    <input type="text" id="sanction-search" placeholder="Rechercher par nom de joueur...">
+                    <select id="sanction-type-filter">
+                        <option value="">Tous les types</option>
+                        <option value="avertissement_1">Avertissement 1</option>
+                        <option value="avertissement_2">Avertissement 2</option>
+                        <option value="avertissement_3">Avertissement 3</option>
+                    </select>
+                </div>
+
+                <div id="sanctions-list" class="list-container"></div>
+
+                <!-- Modal ajout sanction -->
+                <div id="sanction-modal" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <h3>Ajouter une sanction</h3>
+                        <form id="sanction-form">
+                            <div class="form-group">
+                                <label for="player-name">Nom du joueur</label>
+                                <input type="text" id="player-name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="player-id">ID du joueur</label>
+                                <input type="text" id="player-id" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="sanction-type">Type de sanction</label>
+                                <select id="sanction-type" required>
+                                    <option value="avertissement_1">Avertissement 1</option>
+                                    <option value="avertissement_2">Avertissement 2</option>
+                                    <option value="avertissement_3">Avertissement 3</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="sanction-reason">Raison</label>
+                                <textarea id="sanction-reason" rows="3" required></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="sanction-notes">Notes (optionnel)</label>
+                                <textarea id="sanction-notes" rows="2"></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Enregistrer</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section Tâches -->
+            <div id="tasks-tab" class="tab-content">
+                <div class="section-header">
+                    <h2>Tableau de tâches</h2>
+                    <button id="add-task-btn" class="btn btn-primary">Ajouter une tâche</button>
+                </div>
+
+                <!-- Filtres tâches -->
+                <div class="filters">
+                    <select id="task-date-filter">
+                        <option value="">Toutes les dates</option>
+                        <option value="today">Aujourd'hui</option>
+                        <option value="week">Cette semaine</option>
+                    </select>
+                    <select id="task-status-filter">
+                        <option value="">Tous les statuts</option>
+                        <option value="pending">En attente</option>
+                        <option value="in_progress">En cours</option>
+                        <option value="completed">Terminée</option>
+                    </select>
+                </div>
+
+                <div id="tasks-list" class="list-container"></div>
+
+                <!-- Modal ajout tâche -->
+                <div id="task-modal" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <h3>Ajouter une tâche</h3>
+                        <form id="task-form">
+                            <div class="form-group">
+                                <label for="task-title">Titre de la tâche</label>
+                                <input type="text" id="task-title" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="task-description">Description</label>
+                                <textarea id="task-description" rows="3" required></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="task-assigned">Assignée à (plusieurs sélections possibles)</label>
+                                <div class="multi-select-container">
+                                    <div class="multi-select-display" id="task-assigned-display">
+                                        <span class="multi-select-placeholder">Sélectionner des utilisateurs...</span>
+                                    </div>
+                                    <div class="multi-select-dropdown" id="task-assigned-dropdown"></div>
+                                </div>
+                                <input type="hidden" id="task-assigned" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="task-date">Date</label>
+                                <input type="date" id="task-date" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="task-priority">Priorité</label>
+                                <select id="task-priority">
+                                    <option value="low">Basse</option>
+                                    <option value="medium">Moyenne</option>
+                                    <option value="high">Haute</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Créer la tâche</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section Annonces -->
+            <div id="announcements-tab" class="tab-content">
+                <div class="section-header">
+                    <h2>Annonces et réunions</h2>
+                    <button id="add-announcement-btn" class="btn btn-primary">Ajouter une annonce</button>
+                </div>
+
+                <div id="announcements-list" class="list-container"></div>
+
+                <!-- Modal ajout annonce -->
+                <div id="announcement-modal" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <h3>Ajouter une annonce</h3>
+                        <form id="announcement-form">
+                            <div class="form-group">
+                                <label for="announcement-title">Titre</label>
+                                <input type="text" id="announcement-title" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="announcement-content">Contenu</label>
+                                <textarea id="announcement-content" rows="4" required></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="announcement-type">Type</label>
+                                <select id="announcement-type">
+                                    <option value="info">Information</option>
+                                    <option value="reunion">Réunion</option>
+                                    <option value="urgent">Urgent</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="announcement-priority">Priorité</label>
+                                <select id="announcement-priority">
+                                    <option value="normal">Normale</option>
+                                    <option value="high">Haute</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Publier</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section Absences -->
+            <div id="absences-tab" class="tab-content">
+                <div class="section-header">
+                    <h2>Gestion des absences</h2>
+                    <button id="add-absence-btn" class="btn btn-primary">Poser une absence</button>
+                </div>
+
+                <div id="absences-list" class="list-container"></div>
+
+                <!-- Modal ajout absence -->
+                <div id="absence-modal" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <h3>Poser une absence</h3>
+                        <form id="absence-form">
+                            <div class="form-group">
+                                <label for="absence-reason">Raison de l'absence</label>
+                                <textarea id="absence-reason" rows="3" required placeholder="Vacances, maladie, etc."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label for="absence-start-date">Date de début</label>
+                                <input type="date" id="absence-start-date" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="absence-end-date">Date de fin</label>
+                                <input type="date" id="absence-end-date" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Enregistrer l'absence</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section Salons de réunion -->
+            <div id="meetings-tab" class="tab-content">
+                <div class="section-header">
+                    <h2>Salons de réunion</h2>
+                    <button id="create-meeting-btn" class="btn btn-primary">Créer un salon</button>
+                </div>
+
+                <div id="meeting-room" style="display: none;">
+                    <div class="meeting-header">
+                        <h3 id="meeting-room-name">Salon de réunion</h3>
+                        <button id="leave-meeting-btn" class="btn btn-danger">Quitter le salon</button>
+                    </div>
+
+                    <!-- Zone de partage d'écran -->
+                    <div id="screen-share-container" style="display: none;">
+                        <video id="screen-share-video" autoplay playsinline></video>
+                    </div>
+
+                    <!-- Participants -->
+                    <div class="meeting-participants">
+                        <h4>Participants</h4>
+                        <div id="participants-list"></div>
+                    </div>
+
+                    <!-- Contrôles audio -->
+                    <div class="meeting-controls">
+                        <button id="toggle-audio-btn" class="btn btn-success">
+                            <span id="audio-icon">🎤</span> Micro activé
+                        </button>
+                        <button id="share-screen-btn" class="btn btn-secondary">
+                            <span>🖥️</span> Partager l'écran
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Modal créer salon -->
+                <div id="meeting-modal" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <h3>Créer un salon de réunion</h3>
+                        <form id="meeting-form">
+                            <div class="form-group">
+                                <label for="meeting-name">Nom du salon</label>
+                                <input type="text" id="meeting-name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="meeting-permission">Vos permissions</label>
+                                <select id="meeting-permission">
+                                    <option value="speaker">Orateur (peut parler)</option>
+                                    <option value="listener">Auditeur (écoute seulement)</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Rejoindre le salon</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section Utilisateurs (Admin uniquement) -->
+            <div id="users-tab" class="tab-content">
+                <div class="section-header">
+                    <h2>Gestion des utilisateurs</h2>
+                    <button id="add-user-btn" class="btn btn-primary">Créer un compte</button>
+                </div>
+
+                <div class="list-container">
+                    <table class="users-table">
+                        <thead>
+                            <tr>
+                                <th>Nom d'utilisateur</th>
+                                <th>Rôle</th>
+                                <th>Permissions</th>
+                                <th>Date de création</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-list"></tbody>
+                    </table>
+                </div>
+
+                <!-- Modal ajout utilisateur -->
+                <div id="user-modal" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <h3>Créer un nouveau compte</h3>
+                        <form id="user-form">
+                            <div class="form-group">
+                                <label for="new-username">Nom d'utilisateur</label>
+                                <input type="text" id="new-username" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="new-password">Mot de passe</label>
+                                <input type="password" id="new-password" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="new-role">Rôle</label>
+                                <select id="new-role" required>
+                                    <option value="moderator">Modérateur</option>
+                                    <option value="admin">Administrateur</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Permissions</label>
+                                <div style="display: flex; flex-direction: column; gap: 10px;">
+                                    <label style="display: flex; align-items: center; gap: 10px;">
+                                        <input type="checkbox" id="perm-sanctions" checked>
+                                        <span>Gérer les sanctions</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 10px;">
+                                        <input type="checkbox" id="perm-tasks">
+                                        <span>Gérer les tâches</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 10px;">
+                                        <input type="checkbox" id="perm-announcements">
+                                        <span>Gérer les annonces</span>
+                                    </label>
+                                    <label style="display: flex; align-items: center; gap: 10px;">
+                                        <input type="checkbox" id="perm-users">
+                                        <span>Gérer les utilisateurs</span>
+                                    </label>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Créer le compte</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Modal modification mot de passe -->
+                <div id="password-modal" class="modal">
+                    <div class="modal-content">
+                        <span class="close">&times;</span>
+                        <h3>Modifier le mot de passe</h3>
+                        <form id="password-form">
+                            <div class="form-group">
+                                <label for="edit-password">Nouveau mot de passe</label>
+                                <input type="password" id="edit-password" required minlength="4">
+                            </div>
+                            <div class="form-group">
+                                <label for="edit-password-confirm">Confirmer le mot de passe</label>
+                                <input type="password" id="edit-password-confirm" required minlength="4">
+                            </div>
+                            <input type="hidden" id="edit-user-id">
+                            <button type="submit" class="btn btn-primary">Modifier le mot de passe</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-peer@9.11.1/simplepeer.min.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/meeting.js"></script>
+</body>
+</html>

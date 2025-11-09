@@ -1,0 +1,17 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "password": "admin123",
+      "role": "admin",
+      "permissions": {
+        "canManageSanctions": true,
+        "canManageTasks": true,
+        "canManageAnnouncements": true,
+        "canManageUsers": true
+      },
+      "createdAt": "2025-01-09T00:00:00Z"
+    }
+  ]
+}
