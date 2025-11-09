@@ -757,7 +757,8 @@ function displayAbsences(absencesToDisplay) {
         const startDate = new Date(absence.startDate);
         const endDate = new Date(absence.endDate);
         const now = new Date();
-        const isActive = absence.status === 'active';
+        // Calculer si l'absence est active en fonction des dates
+        const isActive = now >= startDate && now <= endDate;
         const isMyAbsence = absence.username === currentUser.username;
 
         return `
