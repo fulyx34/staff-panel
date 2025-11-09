@@ -7,6 +7,7 @@ let absences = [];
 let users = [];
 let allUsernames = [];
 let selectedUsers = [];
+let selectedStaffMembers = []; // Pour le multi-select des sanctions
 
 // Initialisation au chargement de la page
 document.addEventListener('DOMContentLoaded', async () => {
@@ -206,20 +207,101 @@ async function loadAllData() {
     updateDashboard();
 }
 
-// Mettre à jour le dropdown des membres du staff pour les sanctions
+// Mettre à jour le dropdown des membres du staff pour les sanctions (multi-select)
 function updateStaffMembersDropdown() {
-    const select = document.getElementById('staff-member');
-    if (!select) return;
+    const optionsContainer = document.getElementById('staff-member-options');
+    if (!optionsContainer) return;
 
-    // Garder l'option par défaut
-    select.innerHTML = '<option value="">Sélectionner un membre du staff...</option>';
+    optionsContainer.innerHTML = '';
 
-    // Ajouter tous les utilisateurs
     allUsernames.forEach(username => {
-        const option = document.createElement('option');
-        option.value = username;
-        option.textContent = username;
-        select.appendChild(option);
+        const optionDiv = document.createElement('div');
+        optionDiv.className = 'multi-select-option';
+        optionDiv.innerHTML = `
+            <input type="checkbox" id="staff-${username}" value="${username}">
+            <label for="staff-${username}">${username}</label>
+        `;
+
+        optionDiv.querySelector('input').addEventListener('change', (e) => {
+            if (e.target.checked) {
+                if (!selectedStaffMembers.includes(username)) {
+                    selectedStaffMembers.push(username);
+                }
+            } else {
+                selectedStaffMembers = selectedStaffMembers.filter(u => u !== username);
+            }
+            updateStaffMembersDisplay();
+        });
+
+        optionsContainer.appendChild(optionDiv);
+    });
+}
+
+// Mettre à jour l'affichage des membres du staff sélectionnés
+function updateStaffMembersDisplay() {
+    const display = document.getElementById('staff-member-display');
+    const hiddenInput = document.getElementById('staff-member');
+
+    if (!display) return;
+
+    if (selectedStaffMembers.length === 0) {
+        display.innerHTML = '<span class="placeholder">Sélectionner un ou plusieurs membres du staff...</span>';
+        hiddenInput.value = '';
+    } else {
+        const tags = selectedStaffMembers.map(username => `
+            <span class="selected-tag">
+                ${username}
+                <span class="remove-tag" onclick="removeStaffMember('${username}')">&times;</span>
+            </span>
+        `).join('');
+        display.innerHTML = tags;
+        hiddenInput.value = selectedStaffMembers.join(',');
+    }
+}
+
+// Retirer un membre du staff de la sélection
+function removeStaffMember(username) {
+    selectedStaffMembers = selectedStaffMembers.filter(u => u !== username);
+
+    // Décocher la checkbox correspondante
+    const checkbox = document.getElementById(`staff-${username}`);
+    if (checkbox) checkbox.checked = false;
+
+    updateStaffMembersDisplay();
+}
+
+// Initialiser le multi-select pour les sanctions
+function setupStaffMembersMultiSelect() {
+    const display = document.getElementById('staff-member-display');
+    const dropdown = document.getElementById('staff-member-dropdown');
+    const searchInput = document.getElementById('staff-member-search');
+
+    if (!display || !dropdown) return;
+
+    // Toggle dropdown au clic sur le display
+    display.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dropdown.classList.toggle('active');
+    });
+
+    // Recherche dans les options
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const options = document.querySelectorAll('#staff-member-options .multi-select-option');
+
+            options.forEach(option => {
+                const label = option.querySelector('label').textContent.toLowerCase();
+                option.style.display = label.includes(searchTerm) ? 'flex' : 'none';
+            });
+        });
+    }
+
+    // Fermer le dropdown en cliquant ailleurs
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.multi-select-wrapper')) {
+            dropdown.classList.remove('active');
+        }
     });
 }
 
@@ -278,28 +360,51 @@ function displaySanctions(sanctionsToDisplay) {
 async function handleAddSanction(e) {
     e.preventDefault();
 
-    const newSanction = {
-        staffMember: document.getElementById('staff-member').value,
+    // Vérifier qu'au moins un membre du staff est sélectionné
+    if (selectedStaffMembers.length === 0) {
+        alert('Veuillez sélectionner au moins un membre du staff');
+        return;
+    }
+
+    const sanctionData = {
         type: document.getElementById('sanction-type').value,
         reason: document.getElementById('sanction-reason').value,
         notes: document.getElementById('sanction-notes').value
     };
 
     try {
-        const response = await fetch('/api/sanctions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newSanction)
+        // Créer une sanction pour chaque membre du staff sélectionné
+        const promises = selectedStaffMembers.map(staffMember => {
+            return fetch('/api/sanctions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...sanctionData,
+                    staffMember: staffMember
+                })
+            });
         });
 
-        if (response.ok) {
+        const responses = await Promise.all(promises);
+
+        // Vérifier que toutes les requêtes ont réussi
+        const allSuccess = responses.every(r => r.ok);
+
+        if (allSuccess) {
             document.getElementById('sanction-modal').classList.remove('active');
             document.getElementById('sanction-form').reset();
+            selectedStaffMembers = [];
+            updateStaffMembersDisplay();
+            // Décocher toutes les checkboxes
+            document.querySelectorAll('#staff-member-options input[type="checkbox"]').forEach(cb => cb.checked = false);
             await loadSanctions();
             updateDashboard();
+        } else {
+            alert('Erreur lors de l\'ajout de certaines sanctions');
         }
     } catch (error) {
         console.error('Erreur ajout sanction:', error);
+        alert('Erreur lors de l\'ajout de la sanction');
     }
 }
 
@@ -861,6 +966,7 @@ async function loadUsersList() {
             setupMultiSelect();
             updateDropdownOptions();
             updateStaffMembersDropdown(); // Mettre à jour le dropdown des sanctions
+            setupStaffMembersMultiSelect(); // Initialiser le multi-select pour sanctions
         }, 100);
     } catch (error) {
         console.error('Erreur chargement liste utilisateurs:', error);
