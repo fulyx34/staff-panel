@@ -103,8 +103,11 @@ app.post('/api/sanctions', requireAuth, async (req, res) => {
     const data = await readJSON('sanctions.json');
     const newSanction = {
         id: data.sanctions.length > 0 ? Math.max(...data.sanctions.map(s => s.id)) + 1 : 1,
-        ...req.body,
-        staffMember: req.session.user.username,
+        staffMember: req.body.staffMember,
+        type: req.body.type,
+        reason: req.body.reason,
+        notes: req.body.notes || '',
+        author: req.session.user.username,
         date: new Date().toISOString()
     };
 
@@ -342,29 +345,6 @@ app.get('/api/users/list', requireAuth, async (req, res) => {
     const data = await readJSON('users.json');
     const usernames = data.users.map(u => u.username);
     res.json(usernames);
-});
-
-// Route pour obtenir la liste des joueurs
-app.get('/api/players', requireAuth, async (req, res) => {
-    const data = await readJSON('players.json');
-    res.json(data.players);
-});
-
-// Route pour ajouter un joueur
-app.post('/api/players', requireAuth, async (req, res) => {
-    if (!req.session.user.permissions.canManageSanctions) {
-        return res.status(403).json({ error: 'Permission refusée' });
-    }
-
-    const data = await readJSON('players.json');
-    const newPlayer = req.body.playerName;
-
-    if (!data.players.includes(newPlayer)) {
-        data.players.push(newPlayer);
-        await writeJSON('players.json', data);
-    }
-
-    res.json({ success: true, players: data.players });
 });
 
 // ========== GESTION DES ABSENCES ==========

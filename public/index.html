@@ -90,7 +90,7 @@
 
                 <!-- Filtres -->
                 <div class="filters">
-                    <input type="text" id="sanction-search" placeholder="Rechercher par nom de joueur...">
+                    <input type="text" id="sanction-search" placeholder="Rechercher par membre du staff...">
                     <select id="sanction-type-filter">
                         <option value="">Tous les types</option>
                         <option value="avertissement_1">Avertissement 1</option>
@@ -108,15 +108,10 @@
                         <h3>Ajouter une sanction</h3>
                         <form id="sanction-form">
                             <div class="form-group">
-                                <label for="player-name">Nom du joueur</label>
-                                <select id="player-name" required>
-                                    <option value="">Sélectionner un joueur...</option>
+                                <label for="staff-member">Membre du staff</label>
+                                <select id="staff-member" required>
+                                    <option value="">Sélectionner un membre du staff...</option>
                                 </select>
-                                <button type="button" id="add-new-player-btn" class="btn btn-secondary" style="margin-top: 10px; width: 100%;">+ Ajouter un nouveau joueur</button>
-                            </div>
-                            <div class="form-group">
-                                <label for="player-id">ID du joueur</label>
-                                <input type="text" id="player-id" required>
                             </div>
                             <div class="form-group">
                                 <label for="sanction-type">Type de sanction</label>

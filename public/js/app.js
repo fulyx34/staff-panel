@@ -7,7 +7,6 @@ let absences = [];
 let users = [];
 let allUsernames = [];
 let selectedUsers = [];
-let players = [];
 
 // Initialisation au chargement de la page
 document.addEventListener('DOMContentLoaded', async () => {
@@ -64,9 +63,6 @@ function initEventListeners() {
     document.getElementById('sanction-type-filter')?.addEventListener('change', filterSanctions);
     document.getElementById('task-date-filter')?.addEventListener('change', filterTasks);
     document.getElementById('task-status-filter')?.addEventListener('change', filterTasks);
-
-    // Bouton ajouter nouveau joueur
-    document.getElementById('add-new-player-btn')?.addEventListener('click', handleAddNewPlayer);
 }
 
 // Gestion du login
@@ -199,8 +195,7 @@ async function loadAllData() {
         loadTasks(),
         loadAnnouncements(),
         loadAbsences(),
-        loadUsersList(),
-        loadPlayers()
+        loadUsersList()
     ]);
 
     // Charger les utilisateurs si l'utilisateur a la permission
@@ -211,60 +206,21 @@ async function loadAllData() {
     updateDashboard();
 }
 
-// Charger la liste des joueurs
-async function loadPlayers() {
-    try {
-        const response = await fetch('/api/players');
-        players = await response.json();
-        updatePlayersDropdown();
-    } catch (error) {
-        console.error('Erreur chargement joueurs:', error);
-    }
-}
-
-// Mettre à jour le dropdown des joueurs
-function updatePlayersDropdown() {
-    const select = document.getElementById('player-name');
+// Mettre à jour le dropdown des membres du staff pour les sanctions
+function updateStaffMembersDropdown() {
+    const select = document.getElementById('staff-member');
     if (!select) return;
 
     // Garder l'option par défaut
-    select.innerHTML = '<option value="">Sélectionner un joueur...</option>';
+    select.innerHTML = '<option value="">Sélectionner un membre du staff...</option>';
 
-    // Ajouter les joueurs
-    players.forEach(player => {
+    // Ajouter tous les utilisateurs
+    allUsernames.forEach(username => {
         const option = document.createElement('option');
-        option.value = player;
-        option.textContent = player;
+        option.value = username;
+        option.textContent = username;
         select.appendChild(option);
     });
-}
-
-// Ajouter un nouveau joueur
-async function handleAddNewPlayer() {
-    const playerName = prompt('Nom du joueur (format: Prenom_Nom):');
-    if (!playerName) return;
-
-    // Validation du format
-    if (!playerName.includes('_')) {
-        alert('Le nom du joueur doit être au format: Prenom_Nom');
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/players', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ playerName })
-        });
-
-        if (response.ok) {
-            await loadPlayers();
-            // Sélectionner automatiquement le nouveau joueur
-            document.getElementById('player-name').value = playerName;
-        }
-    } catch (error) {
-        console.error('Erreur ajout joueur:', error);
-    }
 }
 
 // Charger les sanctions
@@ -291,7 +247,7 @@ function displaySanctions(sanctionsToDisplay) {
         <div class="card">
             <div class="card-header">
                 <div>
-                    <span class="card-title">${sanction.playerName}</span>
+                    <span class="card-title">${sanction.staffMember}</span>
                     <span class="badge badge-${sanction.type.replace('_', '-')}">${formatSanctionType(sanction.type)}</span>
                 </div>
                 ${currentUser.permissions.canManageSanctions ? `
@@ -306,12 +262,8 @@ function displaySanctions(sanctionsToDisplay) {
             </div>
             <div class="card-info">
                 <div class="card-info-item">
-                    <strong>ID Joueur</strong>
-                    <span>${sanction.playerId}</span>
-                </div>
-                <div class="card-info-item">
-                    <strong>Staff</strong>
-                    <span>${sanction.staffMember}</span>
+                    <strong>Auteur</strong>
+                    <span>${sanction.author || 'N/A'}</span>
                 </div>
                 <div class="card-info-item">
                     <strong>Date</strong>
@@ -327,8 +279,7 @@ async function handleAddSanction(e) {
     e.preventDefault();
 
     const newSanction = {
-        playerName: document.getElementById('player-name').value,
-        playerId: document.getElementById('player-id').value,
+        staffMember: document.getElementById('staff-member').value,
         type: document.getElementById('sanction-type').value,
         reason: document.getElementById('sanction-reason').value,
         notes: document.getElementById('sanction-notes').value
@@ -371,7 +322,7 @@ function filterSanctions() {
     const typeFilter = document.getElementById('sanction-type-filter').value;
 
     const filtered = sanctions.filter(sanction => {
-        const matchesSearch = sanction.playerName.toLowerCase().includes(search);
+        const matchesSearch = (sanction.staffMember || '').toLowerCase().includes(search);
         const matchesType = !typeFilter || sanction.type === typeFilter;
         return matchesSearch && matchesType;
     });
@@ -909,6 +860,7 @@ async function loadUsersList() {
         setTimeout(() => {
             setupMultiSelect();
             updateDropdownOptions();
+            updateStaffMembersDropdown(); // Mettre à jour le dropdown des sanctions
         }, 100);
     } catch (error) {
         console.error('Erreur chargement liste utilisateurs:', error);
