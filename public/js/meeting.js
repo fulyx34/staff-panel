@@ -172,11 +172,20 @@ async function toggleScreenShare() {
             // Envoyer le stream aux peers existants
             peers.forEach((peer, peerId) => {
                 try {
-                    // SimplePeer v9 utilise addStream
-                    peer.addStream(screenStream);
-                    console.log('Partage d\'écran envoyé au peer:', peerId);
+                    // Envoyer chaque track du screen stream
+                    screenStream.getTracks().forEach(track => {
+                        peer.addTrack(track, screenStream);
+                        console.log('Track partage d\'écran envoyé au peer:', peerId, track.kind);
+                    });
                 } catch (error) {
                     console.error('Erreur envoi partage écran:', error);
+                    // Fallback: essayer addStream
+                    try {
+                        peer.addStream(screenStream);
+                        console.log('Partage d\'écran envoyé via addStream au peer:', peerId);
+                    } catch (e) {
+                        console.error('Erreur addStream:', e);
+                    }
                 }
             });
 
@@ -348,17 +357,26 @@ function setupSocketListeners() {
 function createPeer(userId, initiator) {
     console.log(`Création peer pour ${userId}, initiator: ${initiator}`);
 
-    const peer = new SimplePeer({
+    // Configuration SimplePeer
+    const peerConfig = {
         initiator: initiator,
-        stream: localStream,
         trickle: true,
         config: {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:global.stun.twilio.com:3478' }
             ]
         }
-    });
+    };
+
+    // Ajouter le stream seulement si on peut parler
+    if (localStream && canSpeak) {
+        peerConfig.stream = localStream;
+        console.log('LocalStream ajouté au peer config pour:', userId);
+    }
+
+    const peer = new SimplePeer(peerConfig);
 
     peer.on('signal', (signal) => {
         if (signal.type === 'offer') {
@@ -371,29 +389,41 @@ function createPeer(userId, initiator) {
     });
 
     peer.on('stream', (stream) => {
-        console.log('Stream reçu de:', userId);
+        console.log('Stream reçu de:', userId, stream);
 
         // Vérifier si c'est un stream audio ou vidéo
-        const hasVideo = stream.getVideoTracks().length > 0;
-        const hasAudio = stream.getAudioTracks().length > 0;
+        const videoTracks = stream.getVideoTracks();
+        const audioTracks = stream.getAudioTracks();
 
-        if (hasVideo) {
+        console.log('Video tracks:', videoTracks.length, 'Audio tracks:', audioTracks.length);
+
+        if (videoTracks.length > 0) {
             // C'est un partage d'écran
             console.log('Partage d\'écran reçu de:', userId);
             const videoElement = document.getElementById('screen-share-video');
             if (videoElement) {
+                // Arrêter l'ancien stream si existant
+                if (videoElement.srcObject) {
+                    videoElement.srcObject.getTracks().forEach(track => track.stop());
+                }
+
                 videoElement.srcObject = stream;
+                videoElement.onloadedmetadata = () => {
+                    console.log('Vidéo metadata chargée, dimensions:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+                    videoElement.play().catch(e => console.error('Erreur play vidéo:', e));
+                };
                 document.getElementById('screen-share-container').style.display = 'block';
 
                 // Quand le stream se termine
-                stream.getVideoTracks()[0].onended = () => {
+                videoTracks[0].onended = () => {
+                    console.log('Stream vidéo terminé');
                     document.getElementById('screen-share-container').style.display = 'none';
                     videoElement.srcObject = null;
                 };
             }
         }
 
-        if (hasAudio) {
+        if (audioTracks.length > 0) {
             // C'est un stream audio
             console.log('Stream audio reçu de:', userId);
 
@@ -402,33 +432,44 @@ function createPeer(userId, initiator) {
                 const oldAudio = audioElements.get(userId);
                 oldAudio.pause();
                 oldAudio.srcObject = null;
+                oldAudio.remove();
                 audioElements.delete(userId);
             }
 
             // Créer un nouvel élément audio
-            const audio = new Audio();
+            const audio = document.createElement('audio');
             audio.srcObject = stream;
             audio.autoplay = true;
             audio.volume = 1.0;
+            audio.setAttribute('playsinline', '');
+
+            // Ajouter au DOM (nécessaire pour certains navigateurs)
+            audio.style.display = 'none';
+            document.body.appendChild(audio);
 
             // Stocker l'élément audio
             audioElements.set(userId, audio);
 
             // Jouer l'audio
             audio.play()
-                .then(() => console.log('Audio en lecture pour:', userId))
+                .then(() => {
+                    console.log('✅ Audio en lecture pour:', userId);
+                })
                 .catch(e => {
-                    console.error('Erreur lecture audio:', e);
-                    // Réessayer après un clic utilisateur
-                    document.body.addEventListener('click', () => {
-                        audio.play().catch(err => console.error('Erreur retry audio:', err));
-                    }, { once: true });
+                    console.error('❌ Erreur lecture audio:', e);
+                    // Réessayer après interaction utilisateur
+                    const retryAudio = () => {
+                        audio.play()
+                            .then(() => console.log('✅ Audio démarré après interaction'))
+                            .catch(err => console.error('❌ Erreur retry audio:', err));
+                    };
+                    document.body.addEventListener('click', retryAudio, { once: true });
                 });
         }
     });
 
     peer.on('error', (err) => {
-        console.error('Erreur peer:', err);
+        console.error('❌ Erreur peer:', err);
     });
 
     peer.on('close', () => {
@@ -440,8 +481,13 @@ function createPeer(userId, initiator) {
             const audio = audioElements.get(userId);
             audio.pause();
             audio.srcObject = null;
+            audio.remove();
             audioElements.delete(userId);
         }
+    });
+
+    peer.on('connect', () => {
+        console.log('✅ Peer connecté:', userId);
     });
 
     peers.set(userId, peer);
@@ -451,18 +497,29 @@ function createPeer(userId, initiator) {
 async function enableMicrophone() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        console.log('Microphone activé, stream:', localStream);
 
-        // Ajouter le stream aux peers existants
-        peers.forEach((peer, peerId) => {
-            localStream.getTracks().forEach(track => {
-                peer.addTrack(track, localStream);
-            });
+        // Recréer les connexions peer avec le nouveau stream
+        const currentPeers = Array.from(peers.entries());
+
+        // Fermer les anciennes connexions
+        currentPeers.forEach(([userId, peer]) => {
+            peer.destroy();
+        });
+        peers.clear();
+
+        // Recréer les connexions avec le stream audio
+        currentPeers.forEach(([userId, oldPeer]) => {
+            // Déterminer qui est l'initiateur (garder la même logique)
+            createPeer(userId, true);
         });
 
         const btn = document.getElementById('toggle-audio-btn');
         btn.classList.remove('btn-danger');
         btn.classList.add('btn-success');
         btn.disabled = false;
+
+        console.log('✅ Microphone activé et peers recréés');
 
     } catch (error) {
         console.error('Erreur activation micro:', error);
