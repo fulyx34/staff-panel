@@ -12,7 +12,8 @@
       "Bash(ipconfig:*)",
       "Bash(cmd /c \"taskkill /F /PID 1908\")",
       "Bash(powershell -Command \"Stop-Process -Id 17400 -Force\")",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []

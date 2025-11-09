@@ -9,6 +9,7 @@ let isScreenSharing = false;
 let myUserId = null;
 let canSpeak = false;
 let participants = new Map();
+let activeMeetings = [];
 
 // Initialisation
 document.addEventListener('DOMContentLoaded', () => {
@@ -38,11 +39,19 @@ async function handleCreateMeeting(e) {
 
     currentRoomId = generateRoomId();
 
+    // Informer le serveur de la création du salon
+    socket.emit('create-meeting', {
+        roomId: currentRoomId,
+        roomName: roomName,
+        creator: currentUser?.username || 'Anonyme'
+    });
+
     // Fermer le modal
     document.getElementById('meeting-modal').classList.remove('active');
     document.getElementById('meeting-form').reset();
 
-    // Afficher la salle de réunion
+    // Cacher la liste et afficher la salle de réunion
+    document.getElementById('active-meetings-list').style.display = 'none';
     document.querySelector('.section-header').style.display = 'none';
     document.getElementById('meeting-room').style.display = 'block';
     document.getElementById('meeting-room-name').textContent = roomName;
@@ -88,7 +97,11 @@ function leaveMeeting() {
     peers.forEach(peer => peer.destroy());
     peers.clear();
 
+    // Informer le serveur de la fermeture du salon
+    socket.emit('close-meeting', { roomId: currentRoomId });
+
     // Réinitialiser l'interface
+    document.getElementById('active-meetings-list').style.display = 'block';
     document.querySelector('.section-header').style.display = 'flex';
     document.getElementById('meeting-room').style.display = 'none';
     document.getElementById('screen-share-container').style.display = 'none';
@@ -191,6 +204,26 @@ function setupSocketListeners() {
     socket.on('connect', () => {
         myUserId = socket.id;
         console.log('Connecté au serveur, ID:', myUserId);
+        // Demander la liste des salons actifs
+        socket.emit('get-active-meetings');
+    });
+
+    // Recevoir la liste des salons actifs
+    socket.on('active-meetings', (meetings) => {
+        activeMeetings = meetings;
+        displayActiveMeetings();
+    });
+
+    // Un nouveau salon a été créé
+    socket.on('meeting-created', (meeting) => {
+        activeMeetings.push(meeting);
+        displayActiveMeetings();
+    });
+
+    // Un salon a été fermé
+    socket.on('meeting-closed', ({ roomId }) => {
+        activeMeetings = activeMeetings.filter(m => m.roomId !== roomId);
+        displayActiveMeetings();
     });
 
     socket.on('room-users', (users) => {
@@ -454,6 +487,72 @@ function revokeSpeak(userId) {
 // Générer un ID de salon unique
 function generateRoomId() {
     return 'room_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+}
+
+// Afficher la liste des salons actifs
+function displayActiveMeetings() {
+    const container = document.getElementById('meetings-cards');
+    if (!container) return;
+
+    if (activeMeetings.length === 0) {
+        container.innerHTML = '<div class="empty-state">Aucun salon actif pour le moment</div>';
+        return;
+    }
+
+    container.innerHTML = activeMeetings.map(meeting => `
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <span class="card-title">${meeting.roomName}</span>
+                    <span class="badge badge-info">${meeting.participants || 0} participant(s)</span>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-primary" onclick="joinExistingMeeting('${meeting.roomId}', '${meeting.roomName}')">
+                        Rejoindre
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <p><strong>Créé par:</strong> ${meeting.creator}</p>
+                <p><strong>ID Salon:</strong> ${meeting.roomId}</p>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Rejoindre un salon existant
+async function joinExistingMeeting(roomId, roomName) {
+    currentRoomId = roomId;
+    canSpeak = false; // Par défaut en mode écoute
+
+    // Demander la permission
+    const wantsToSpeak = confirm('Voulez-vous rejoindre avec le microphone activé ?');
+    canSpeak = wantsToSpeak;
+
+    // Cacher la liste et afficher la salle
+    document.getElementById('active-meetings-list').style.display = 'none';
+    document.querySelector('.section-header').style.display = 'none';
+    document.getElementById('meeting-room').style.display = 'block';
+    document.getElementById('meeting-room-name').textContent = roomName;
+
+    // Demander l'accès au microphone si nécessaire
+    if (canSpeak) {
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('Microphone activé');
+        } catch (error) {
+            console.error('Erreur accès micro:', error);
+            alert('Impossible d\'accéder au microphone');
+            canSpeak = false;
+        }
+    }
+
+    // Rejoindre le salon via Socket.IO
+    socket.emit('join-room', {
+        roomId: currentRoomId,
+        username: currentUser?.username || 'Anonyme',
+        canSpeak: canSpeak
+    });
 }
 
 // Configurer les listeners pour le modal meeting

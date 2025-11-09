@@ -7,6 +7,7 @@ let absences = [];
 let users = [];
 let allUsernames = [];
 let selectedUsers = [];
+let players = [];
 
 // Initialisation au chargement de la page
 document.addEventListener('DOMContentLoaded', async () => {
@@ -63,6 +64,9 @@ function initEventListeners() {
     document.getElementById('sanction-type-filter')?.addEventListener('change', filterSanctions);
     document.getElementById('task-date-filter')?.addEventListener('change', filterTasks);
     document.getElementById('task-status-filter')?.addEventListener('change', filterTasks);
+
+    // Bouton ajouter nouveau joueur
+    document.getElementById('add-new-player-btn')?.addEventListener('click', handleAddNewPlayer);
 }
 
 // Gestion du login
@@ -177,7 +181,8 @@ async function loadAllData() {
         loadTasks(),
         loadAnnouncements(),
         loadAbsences(),
-        loadUsersList()
+        loadUsersList(),
+        loadPlayers()
     ]);
 
     // Charger les utilisateurs si l'utilisateur a la permission
@@ -186,6 +191,62 @@ async function loadAllData() {
     }
 
     updateDashboard();
+}
+
+// Charger la liste des joueurs
+async function loadPlayers() {
+    try {
+        const response = await fetch('/api/players');
+        players = await response.json();
+        updatePlayersDropdown();
+    } catch (error) {
+        console.error('Erreur chargement joueurs:', error);
+    }
+}
+
+// Mettre à jour le dropdown des joueurs
+function updatePlayersDropdown() {
+    const select = document.getElementById('player-name');
+    if (!select) return;
+
+    // Garder l'option par défaut
+    select.innerHTML = '<option value="">Sélectionner un joueur...</option>';
+
+    // Ajouter les joueurs
+    players.forEach(player => {
+        const option = document.createElement('option');
+        option.value = player;
+        option.textContent = player;
+        select.appendChild(option);
+    });
+}
+
+// Ajouter un nouveau joueur
+async function handleAddNewPlayer() {
+    const playerName = prompt('Nom du joueur (format: Prenom_Nom):');
+    if (!playerName) return;
+
+    // Validation du format
+    if (!playerName.includes('_')) {
+        alert('Le nom du joueur doit être au format: Prenom_Nom');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/players', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playerName })
+        });
+
+        if (response.ok) {
+            await loadPlayers();
+            // Sélectionner automatiquement le nouveau joueur
+            document.getElementById('player-name').value = playerName;
+        }
+    } catch (error) {
+        console.error('Erreur ajout joueur:', error);
+    }
 }
 
 // Charger les sanctions
@@ -826,7 +887,11 @@ async function loadUsersList() {
     try {
         const response = await fetch('/api/users/list');
         allUsernames = await response.json();
-        setupMultiSelect();
+        // Attendre que le DOM soit chargé avant de configurer le multi-select
+        setTimeout(() => {
+            setupMultiSelect();
+            updateDropdownOptions();
+        }, 100);
     } catch (error) {
         console.error('Erreur chargement liste utilisateurs:', error);
     }
@@ -933,12 +998,18 @@ async function deleteUser(id) {
 
 // ========== MULTI-SELECT POUR ASSIGNATION ==========
 
+let multiSelectInitialized = false;
+
 // Configurer le multi-select
 function setupMultiSelect() {
     const display = document.getElementById('task-assigned-display');
     const dropdown = document.getElementById('task-assigned-dropdown');
 
     if (!display || !dropdown) return;
+
+    // Éviter d'ajouter les événements plusieurs fois
+    if (multiSelectInitialized) return;
+    multiSelectInitialized = true;
 
     // Afficher/masquer le dropdown
     display.addEventListener('click', (e) => {
