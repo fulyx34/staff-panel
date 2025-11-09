@@ -207,17 +207,24 @@ async function getTasks() {
         title: row.title,
         description: row.description,
         assignedTo: row.assigned_to,
+        date: row.due_date,
         dueDate: row.due_date,
         status: row.status,
         author: row.author,
+        assignedBy: row.author,
         createdAt: row.created_at
     }));
 }
 
 async function createTask(title, description, assignedTo, dueDate, author) {
+    // Convertir assignedTo en tableau si c'est une string
+    const assignedToArray = typeof assignedTo === 'string'
+        ? assignedTo.split(',').map(u => u.trim())
+        : assignedTo;
+
     const result = await pool.query(
         'INSERT INTO tasks (title, description, assigned_to, due_date, author) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-        [title, description, assignedTo, dueDate, author]
+        [title, description, assignedToArray, dueDate, author]
     );
     const row = result.rows[0];
     return {
@@ -225,9 +232,11 @@ async function createTask(title, description, assignedTo, dueDate, author) {
         title: row.title,
         description: row.description,
         assignedTo: row.assigned_to,
+        date: row.due_date,
         dueDate: row.due_date,
         status: row.status,
         author: row.author,
+        assignedBy: row.author,
         createdAt: row.created_at
     };
 }
@@ -243,9 +252,11 @@ async function updateTaskStatus(id, status) {
         title: row.title,
         description: row.description,
         assignedTo: row.assigned_to,
+        date: row.due_date,
         dueDate: row.due_date,
         status: row.status,
         author: row.author,
+        assignedBy: row.author,
         createdAt: row.created_at
     };
 }

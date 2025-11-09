@@ -480,15 +480,15 @@ function displayTasks(tasksToDisplay) {
             <div class="card-info">
                 <div class="card-info-item">
                     <strong>Assignée à</strong>
-                    <span>${task.assignedTo}</span>
+                    <span>${Array.isArray(task.assignedTo) ? task.assignedTo.join(', ') : task.assignedTo}</span>
                 </div>
                 <div class="card-info-item">
                     <strong>Par</strong>
-                    <span>${task.assignedBy}</span>
+                    <span>${task.assignedBy || task.author || 'N/A'}</span>
                 </div>
                 <div class="card-info-item">
                     <strong>Date</strong>
-                    <span>${formatDate(task.date)}</span>
+                    <span>${formatDate(task.date || task.dueDate)}</span>
                 </div>
             </div>
         </div>
@@ -859,9 +859,16 @@ function updateDashboard() {
 
     // Mes tâches du jour
     const today = new Date().toISOString().split('T')[0];
-    const myTasksToday = tasks.filter(t =>
-        t.assignedTo === currentUser.username && t.date === today
-    );
+    const myTasksToday = tasks.filter(t => {
+        // Gérer à la fois le format array et string pour assignedTo
+        const assignedUsers = Array.isArray(t.assignedTo) ? t.assignedTo : [t.assignedTo];
+        const isAssignedToMe = assignedUsers.some(user =>
+            user.trim() === currentUser.username ||
+            t.assignedTo === currentUser.username ||
+            (typeof t.assignedTo === 'string' && t.assignedTo.includes(currentUser.username))
+        );
+        return isAssignedToMe && t.date === today;
+    });
 
     const myTasksContainer = document.getElementById('my-tasks-today');
     if (myTasksToday.length === 0) {

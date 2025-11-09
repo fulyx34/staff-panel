@@ -132,7 +132,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
             req.body.title,
             req.body.description,
             req.body.assignedTo,
-            req.body.dueDate,
+            req.body.date || req.body.dueDate,
             req.session.user.username
         );
         res.json(newTask);
