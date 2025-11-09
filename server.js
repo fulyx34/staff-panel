@@ -545,12 +545,21 @@ function handleUserLeave(socketId, roomId) {
 // Initialiser la base de données et démarrer le serveur
 async function startServer() {
     try {
+        console.log('🚀 Démarrage du serveur...');
+        console.log('📦 Version Node.js:', process.version);
+        console.log('🔧 PORT:', PORT);
+        console.log('🌍 NODE_ENV:', process.env.NODE_ENV || 'development');
+
         await db.initDatabase();
-        server.listen(PORT, () => {
-            console.log(`Serveur démarré sur http://localhost:${PORT}`);
+
+        server.listen(PORT, '0.0.0.0', () => {
+            console.log(`✅ Serveur démarré avec succès sur le port ${PORT}`);
+            console.log(`🌐 URL: http://localhost:${PORT}`);
         });
     } catch (error) {
-        console.error('Erreur démarrage serveur:', error);
+        console.error('❌ ERREUR FATALE lors du démarrage du serveur:');
+        console.error('Message:', error.message);
+        console.error('Stack:', error.stack);
         process.exit(1);
     }
 }

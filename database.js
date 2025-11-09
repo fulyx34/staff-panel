@@ -1,16 +1,38 @@
 // Configuration et gestion de la base de données PostgreSQL
 const { Pool } = require('pg');
 
+// Vérifier que DATABASE_URL est défini
+if (!process.env.DATABASE_URL) {
+    console.error('❌ ERREUR CRITIQUE: La variable d\'environnement DATABASE_URL n\'est pas définie !');
+    console.error('📝 Veuillez configurer DATABASE_URL dans vos variables d\'environnement.');
+    console.error('   Format: postgresql://username:password@host:port/database');
+    process.exit(1);
+}
+
+console.log('✅ DATABASE_URL détectée');
+console.log('🔧 Environnement:', process.env.NODE_ENV || 'development');
+
 // Configuration de la connexion PostgreSQL
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
+// Tester la connexion
+pool.on('connect', () => {
+    console.log('✅ Connexion à PostgreSQL établie');
+});
+
+pool.on('error', (err) => {
+    console.error('❌ Erreur PostgreSQL:', err.message);
+});
+
 // Initialiser les tables
 async function initDatabase() {
+    console.log('🔄 Initialisation de la base de données...');
     const client = await pool.connect();
     try {
+        console.log('✅ Client PostgreSQL connecté');
         // Table users
         await client.query(`
             CREATE TABLE IF NOT EXISTS users (
