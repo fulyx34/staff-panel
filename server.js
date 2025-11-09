@@ -1,10 +1,9 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const session = require('express-session');
-const fs = require('fs').promises;
-const path = require('path');
 const http = require('http');
 const { Server } = require('socket.io');
+const db = require('./database');
 
 const app = express();
 const server = http.createServer(app);
@@ -22,31 +21,6 @@ app.use(session({
     cookie: { secure: false }
 }));
 
-// Helper functions pour lire/écrire les fichiers JSON
-async function readJSON(filename) {
-    try {
-        const data = await fs.readFile(path.join(__dirname, 'data', filename), 'utf8');
-        return JSON.parse(data);
-    } catch (error) {
-        console.error(`Erreur lecture ${filename}:`, error);
-        return null;
-    }
-}
-
-async function writeJSON(filename, data) {
-    try {
-        await fs.writeFile(
-            path.join(__dirname, 'data', filename),
-            JSON.stringify(data, null, 2),
-            'utf8'
-        );
-        return true;
-    } catch (error) {
-        console.error(`Erreur écriture ${filename}:`, error);
-        return false;
-    }
-}
-
 // Middleware de vérification de connexion
 function requireAuth(req, res, next) {
     if (req.session.user) {
@@ -58,21 +32,24 @@ function requireAuth(req, res, next) {
 
 // Routes d'authentification
 app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
-    const data = await readJSON('users.json');
+    try {
+        const { username, password } = req.body;
+        const user = await db.getUserByUsername(username);
 
-    const user = data.users.find(u => u.username === username && u.password === password);
-
-    if (user) {
-        req.session.user = {
-            id: user.id,
-            username: user.username,
-            role: user.role,
-            permissions: user.permissions
-        };
-        res.json({ success: true, user: req.session.user });
-    } else {
-        res.status(401).json({ error: 'Identifiants incorrects' });
+        if (user && user.password === password) {
+            req.session.user = {
+                id: user.id,
+                username: user.username,
+                role: user.role,
+                permissions: user.permissions
+            };
+            res.json({ success: true, user: req.session.user });
+        } else {
+            res.status(401).json({ error: 'Identifiants incorrects' });
+        }
+    } catch (error) {
+        console.error('Erreur login:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
@@ -91,310 +68,299 @@ app.get('/api/session', (req, res) => {
 
 // Routes pour les sanctions
 app.get('/api/sanctions', requireAuth, async (req, res) => {
-    const data = await readJSON('sanctions.json');
-    res.json(data.sanctions);
+    try {
+        const sanctions = await db.getSanctions();
+        res.json(sanctions);
+    } catch (error) {
+        console.error('Erreur récupération sanctions:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
 });
 
 app.post('/api/sanctions', requireAuth, async (req, res) => {
-    if (!req.session.user.permissions.canManageSanctions) {
-        return res.status(403).json({ error: 'Permission refusée' });
+    try {
+        if (!req.session.user.permissions.canManageSanctions) {
+            return res.status(403).json({ error: 'Permission refusée' });
+        }
+
+        const newSanction = await db.createSanction(
+            req.body.staffMember,
+            req.body.type,
+            req.body.reason,
+            req.body.notes || '',
+            req.session.user.username
+        );
+        res.json(newSanction);
+    } catch (error) {
+        console.error('Erreur création sanction:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
     }
-
-    const data = await readJSON('sanctions.json');
-    const newSanction = {
-        id: data.sanctions.length > 0 ? Math.max(...data.sanctions.map(s => s.id)) + 1 : 1,
-        staffMember: req.body.staffMember,
-        type: req.body.type,
-        reason: req.body.reason,
-        notes: req.body.notes || '',
-        author: req.session.user.username,
-        date: new Date().toISOString()
-    };
-
-    data.sanctions.push(newSanction);
-    await writeJSON('sanctions.json', data);
-    res.json(newSanction);
 });
 
 app.delete('/api/sanctions/:id', requireAuth, async (req, res) => {
-    if (!req.session.user.permissions.canManageSanctions) {
-        return res.status(403).json({ error: 'Permission refusée' });
-    }
+    try {
+        if (!req.session.user.permissions.canManageSanctions) {
+            return res.status(403).json({ error: 'Permission refusée' });
+        }
 
-    const data = await readJSON('sanctions.json');
-    data.sanctions = data.sanctions.filter(s => s.id !== parseInt(req.params.id));
-    await writeJSON('sanctions.json', data);
-    res.json({ success: true });
+        await db.deleteSanction(parseInt(req.params.id));
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Erreur suppression sanction:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
 });
 
 // Routes pour les tâches
 app.get('/api/tasks', requireAuth, async (req, res) => {
-    const data = await readJSON('tasks.json');
-    res.json(data.tasks);
+    try {
+        const tasks = await db.getTasks();
+        res.json(tasks);
+    } catch (error) {
+        console.error('Erreur récupération tâches:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
 });
 
 app.post('/api/tasks', requireAuth, async (req, res) => {
-    if (!req.session.user.permissions.canManageTasks) {
-        return res.status(403).json({ error: 'Permission refusée' });
+    try {
+        if (!req.session.user.permissions.canManageTasks) {
+            return res.status(403).json({ error: 'Permission refusée' });
+        }
+
+        const newTask = await db.createTask(
+            req.body.title,
+            req.body.description,
+            req.body.assignedTo,
+            req.body.dueDate,
+            req.session.user.username
+        );
+        res.json(newTask);
+    } catch (error) {
+        console.error('Erreur création tâche:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
     }
-
-    const data = await readJSON('tasks.json');
-    const newTask = {
-        id: data.tasks.length > 0 ? Math.max(...data.tasks.map(t => t.id)) + 1 : 1,
-        ...req.body,
-        assignedBy: req.session.user.username,
-        createdAt: new Date().toISOString()
-    };
-
-    data.tasks.push(newTask);
-    await writeJSON('tasks.json', data);
-    res.json(newTask);
 });
 
 app.put('/api/tasks/:id', requireAuth, async (req, res) => {
-    const data = await readJSON('tasks.json');
-    const taskIndex = data.tasks.findIndex(t => t.id === parseInt(req.params.id));
-
-    if (taskIndex !== -1) {
-        data.tasks[taskIndex] = { ...data.tasks[taskIndex], ...req.body };
-        await writeJSON('tasks.json', data);
-        res.json(data.tasks[taskIndex]);
-    } else {
-        res.status(404).json({ error: 'Tâche non trouvée' });
+    try {
+        const updatedTask = await db.updateTaskStatus(parseInt(req.params.id), req.body.status);
+        if (updatedTask) {
+            res.json(updatedTask);
+        } else {
+            res.status(404).json({ error: 'Tâche non trouvée' });
+        }
+    } catch (error) {
+        console.error('Erreur mise à jour tâche:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
 app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
-    if (!req.session.user.permissions.canManageTasks) {
-        return res.status(403).json({ error: 'Permission refusée' });
-    }
+    try {
+        if (!req.session.user.permissions.canManageTasks) {
+            return res.status(403).json({ error: 'Permission refusée' });
+        }
 
-    const data = await readJSON('tasks.json');
-    data.tasks = data.tasks.filter(t => t.id !== parseInt(req.params.id));
-    await writeJSON('tasks.json', data);
-    res.json({ success: true });
+        await db.deleteTask(parseInt(req.params.id));
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Erreur suppression tâche:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
 });
 
 // Routes pour les annonces
 app.get('/api/announcements', requireAuth, async (req, res) => {
-    const data = await readJSON('announcements.json');
-    res.json(data.announcements);
+    try {
+        const announcements = await db.getAnnouncements();
+        res.json(announcements);
+    } catch (error) {
+        console.error('Erreur récupération annonces:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
 });
 
 app.post('/api/announcements', requireAuth, async (req, res) => {
-    if (!req.session.user.permissions.canManageAnnouncements) {
-        return res.status(403).json({ error: 'Permission refusée' });
+    try {
+        if (!req.session.user.permissions.canManageAnnouncements) {
+            return res.status(403).json({ error: 'Permission refusée' });
+        }
+
+        const newAnnouncement = await db.createAnnouncement(
+            req.body.title,
+            req.body.content,
+            req.body.type,
+            req.session.user.username
+        );
+        res.json(newAnnouncement);
+    } catch (error) {
+        console.error('Erreur création annonce:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
     }
-
-    const data = await readJSON('announcements.json');
-    const newAnnouncement = {
-        id: data.announcements.length > 0 ? Math.max(...data.announcements.map(a => a.id)) + 1 : 1,
-        ...req.body,
-        author: req.session.user.username,
-        date: new Date().toISOString()
-    };
-
-    data.announcements.push(newAnnouncement);
-    await writeJSON('announcements.json', data);
-    res.json(newAnnouncement);
 });
 
 app.delete('/api/announcements/:id', requireAuth, async (req, res) => {
-    if (!req.session.user.permissions.canManageAnnouncements) {
-        return res.status(403).json({ error: 'Permission refusée' });
-    }
+    try {
+        if (!req.session.user.permissions.canManageAnnouncements) {
+            return res.status(403).json({ error: 'Permission refusée' });
+        }
 
-    const data = await readJSON('announcements.json');
-    data.announcements = data.announcements.filter(a => a.id !== parseInt(req.params.id));
-    await writeJSON('announcements.json', data);
-    res.json({ success: true });
+        await db.deleteAnnouncement(parseInt(req.params.id));
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Erreur suppression annonce:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
 });
 
 // Route pour marquer sa présence à une réunion
+// NOTE: Cette fonctionnalité nécessite une table supplémentaire pour les attendances
+// Pour l'instant, on la désactive temporairement
 app.post('/api/announcements/:id/attendance', requireAuth, async (req, res) => {
-    const announcementId = parseInt(req.params.id);
-    const { status } = req.body; // "present" ou "absent"
-
-    const data = await readJSON('announcements.json');
-    const announcement = data.announcements.find(a => a.id === announcementId);
-
-    if (!announcement) {
-        return res.status(404).json({ error: 'Annonce non trouvée' });
-    }
-
-    if (announcement.type !== 'reunion') {
-        return res.status(400).json({ error: 'Cette annonce n\'est pas une réunion' });
-    }
-
-    // Initialiser attendance si nécessaire
-    if (!announcement.attendance) {
-        announcement.attendance = {
-            present: [],
-            absent: []
-        };
-    }
-
-    const username = req.session.user.username;
-
-    // Retirer l'utilisateur des deux listes
-    announcement.attendance.present = announcement.attendance.present.filter(u => u !== username);
-    announcement.attendance.absent = announcement.attendance.absent.filter(u => u !== username);
-
-    // Ajouter l'utilisateur à la liste appropriée
-    if (status === 'present') {
-        announcement.attendance.present.push(username);
-    } else if (status === 'absent') {
-        announcement.attendance.absent.push(username);
-    }
-
-    await writeJSON('announcements.json', data);
-    res.json({ success: true, attendance: announcement.attendance });
+    // TODO: Implémenter avec une table attendance dans PostgreSQL
+    res.status(501).json({ error: 'Fonctionnalité non encore implémentée avec PostgreSQL' });
 });
 
 // Routes pour les utilisateurs
 app.get('/api/users', requireAuth, async (req, res) => {
-    if (!req.session.user.permissions.canManageUsers) {
-        return res.status(403).json({ error: 'Permission refusée' });
-    }
+    try {
+        if (!req.session.user.permissions.canManageUsers) {
+            return res.status(403).json({ error: 'Permission refusée' });
+        }
 
-    const data = await readJSON('users.json');
-    // Ne pas envoyer les mots de passe
-    const users = data.users.map(u => ({
-        id: u.id,
-        username: u.username,
-        role: u.role,
-        permissions: u.permissions,
-        createdAt: u.createdAt
-    }));
-    res.json(users);
+        const users = await db.getUsers();
+        // Ne pas envoyer les mots de passe (déjà filtré par getUsers)
+        res.json(users);
+    } catch (error) {
+        console.error('Erreur récupération utilisateurs:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
 });
 
 app.post('/api/users', requireAuth, async (req, res) => {
-    if (!req.session.user.permissions.canManageUsers) {
-        return res.status(403).json({ error: 'Permission refusée' });
+    try {
+        if (!req.session.user.permissions.canManageUsers) {
+            return res.status(403).json({ error: 'Permission refusée' });
+        }
+
+        // Vérifier si le nom d'utilisateur existe déjà
+        const existingUser = await db.getUserByUsername(req.body.username);
+        if (existingUser) {
+            return res.status(400).json({ error: 'Ce nom d\'utilisateur existe déjà' });
+        }
+
+        const newUser = await db.createUser(
+            req.body.username,
+            req.body.password,
+            req.body.role,
+            req.body.permissions
+        );
+        res.json(newUser);
+    } catch (error) {
+        console.error('Erreur création utilisateur:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
     }
-
-    const data = await readJSON('users.json');
-
-    // Vérifier si le nom d'utilisateur existe déjà
-    if (data.users.find(u => u.username === req.body.username)) {
-        return res.status(400).json({ error: 'Ce nom d\'utilisateur existe déjà' });
-    }
-
-    const newUser = {
-        id: data.users.length > 0 ? Math.max(...data.users.map(u => u.id)) + 1 : 1,
-        username: req.body.username,
-        password: req.body.password,
-        role: req.body.role,
-        permissions: req.body.permissions,
-        createdAt: new Date().toISOString()
-    };
-
-    data.users.push(newUser);
-    await writeJSON('users.json', data);
-
-    // Ne pas renvoyer le mot de passe
-    const { password, ...userWithoutPassword } = newUser;
-    res.json(userWithoutPassword);
 });
 
 app.put('/api/users/:id/password', requireAuth, async (req, res) => {
-    if (!req.session.user.permissions.canManageUsers) {
-        return res.status(403).json({ error: 'Permission refusée' });
-    }
+    try {
+        if (!req.session.user.permissions.canManageUsers) {
+            return res.status(403).json({ error: 'Permission refusée' });
+        }
 
-    const userId = parseInt(req.params.id);
-    const { newPassword } = req.body;
+        const userId = parseInt(req.params.id);
+        const { newPassword } = req.body;
 
-    if (!newPassword || newPassword.length < 4) {
-        return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 4 caractères' });
-    }
+        if (!newPassword || newPassword.length < 4) {
+            return res.status(400).json({ error: 'Le mot de passe doit contenir au moins 4 caractères' });
+        }
 
-    const data = await readJSON('users.json');
-    const userIndex = data.users.findIndex(u => u.id === userId);
-
-    if (userIndex !== -1) {
-        data.users[userIndex].password = newPassword;
-        await writeJSON('users.json', data);
+        await db.updateUser(userId, { password: newPassword });
         res.json({ success: true });
-    } else {
-        res.status(404).json({ error: 'Utilisateur non trouvé' });
+    } catch (error) {
+        console.error('Erreur mise à jour mot de passe:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
 app.delete('/api/users/:id', requireAuth, async (req, res) => {
-    if (!req.session.user.permissions.canManageUsers) {
-        return res.status(403).json({ error: 'Permission refusée' });
+    try {
+        if (!req.session.user.permissions.canManageUsers) {
+            return res.status(403).json({ error: 'Permission refusée' });
+        }
+
+        const userId = parseInt(req.params.id);
+
+        // Empêcher la suppression de son propre compte
+        if (userId === req.session.user.id) {
+            return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
+        }
+
+        await db.deleteUser(userId);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Erreur suppression utilisateur:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
     }
-
-    const userId = parseInt(req.params.id);
-
-    // Empêcher la suppression de son propre compte
-    if (userId === req.session.user.id) {
-        return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
-    }
-
-    const data = await readJSON('users.json');
-    data.users = data.users.filter(u => u.id !== userId);
-    await writeJSON('users.json', data);
-    res.json({ success: true });
 });
 
 // Route pour obtenir la liste de tous les noms d'utilisateurs (pour le multi-select)
 app.get('/api/users/list', requireAuth, async (req, res) => {
-    const data = await readJSON('users.json');
-    const usernames = data.users.map(u => u.username);
-    res.json(usernames);
+    try {
+        const usernames = await db.getUsernames();
+        res.json(usernames);
+    } catch (error) {
+        console.error('Erreur récupération usernames:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
 });
 
 // ========== GESTION DES ABSENCES ==========
 
 // Routes pour les absences
 app.get('/api/absences', requireAuth, async (req, res) => {
-    const data = await readJSON('absences.json');
-
-    // Mettre à jour le statut des absences expirées
-    const now = new Date();
-    data.absences.forEach(absence => {
-        const endDate = new Date(absence.endDate);
-        if (endDate < now && absence.status === 'active') {
-            absence.status = 'inactive';
-        }
-    });
-
-    await writeJSON('absences.json', data);
-    res.json(data.absences);
+    try {
+        const absences = await db.getAbsences();
+        // Le statut est géré côté client (pas de champ status dans la DB)
+        res.json(absences);
+    } catch (error) {
+        console.error('Erreur récupération absences:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
 });
 
 app.post('/api/absences', requireAuth, async (req, res) => {
-    const data = await readJSON('absences.json');
-    const newAbsence = {
-        id: data.absences.length > 0 ? Math.max(...data.absences.map(a => a.id)) + 1 : 1,
-        username: req.session.user.username,
-        reason: req.body.reason,
-        startDate: req.body.startDate,
-        endDate: req.body.endDate,
-        status: 'active',
-        createdAt: new Date().toISOString()
-    };
-
-    data.absences.push(newAbsence);
-    await writeJSON('absences.json', data);
-    res.json(newAbsence);
+    try {
+        const newAbsence = await db.createAbsence(
+            req.session.user.username,
+            req.body.startDate,
+            req.body.endDate,
+            req.body.reason
+        );
+        res.json(newAbsence);
+    } catch (error) {
+        console.error('Erreur création absence:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
+    }
 });
 
 app.delete('/api/absences/:id', requireAuth, async (req, res) => {
-    const data = await readJSON('absences.json');
-    const absenceId = parseInt(req.params.id);
-    const absence = data.absences.find(a => a.id === absenceId);
+    try {
+        const absenceId = parseInt(req.params.id);
+        const absences = await db.getAbsences();
+        const absence = absences.find(a => a.id === absenceId);
 
-    // Vérifier que l'utilisateur est le propriétaire de l'absence ou est admin
-    if (absence && (absence.username === req.session.user.username || req.session.user.permissions.canManageUsers)) {
-        data.absences = data.absences.filter(a => a.id !== absenceId);
-        await writeJSON('absences.json', data);
-        res.json({ success: true });
-    } else {
-        res.status(403).json({ error: 'Permission refusée' });
+        // Vérifier que l'utilisateur est le propriétaire de l'absence ou est admin
+        if (absence && (absence.username === req.session.user.username || req.session.user.permissions.canManageUsers)) {
+            await db.deleteAbsence(absenceId);
+            res.json({ success: true });
+        } else {
+            res.status(403).json({ error: 'Permission refusée' });
+        }
+    } catch (error) {
+        console.error('Erreur suppression absence:', error);
+        res.status(500).json({ error: 'Erreur serveur' });
     }
 });
 
@@ -576,6 +542,17 @@ function handleUserLeave(socketId, roomId) {
     }
 }
 
-server.listen(PORT, () => {
-    console.log(`Serveur démarré sur http://localhost:${PORT}`);
-});
+// Initialiser la base de données et démarrer le serveur
+async function startServer() {
+    try {
+        await db.initDatabase();
+        server.listen(PORT, () => {
+            console.log(`Serveur démarré sur http://localhost:${PORT}`);
+        });
+    } catch (error) {
+        console.error('Erreur démarrage serveur:', error);
+        process.exit(1);
+    }
+}
+
+startServer();
