@@ -169,24 +169,18 @@ async function toggleScreenShare() {
             // Notifier les autres
             socket.emit('start-screen-share', { roomId: currentRoomId });
 
-            // Envoyer le stream aux peers existants
-            peers.forEach((peer, peerId) => {
-                try {
-                    // Envoyer chaque track du screen stream
-                    screenStream.getTracks().forEach(track => {
-                        peer.addTrack(track, screenStream);
-                        console.log('Track partage d\'écran envoyé au peer:', peerId, track.kind);
-                    });
-                } catch (error) {
-                    console.error('Erreur envoi partage écran:', error);
-                    // Fallback: essayer addStream
-                    try {
-                        peer.addStream(screenStream);
-                        console.log('Partage d\'écran envoyé via addStream au peer:', peerId);
-                    } catch (e) {
-                        console.error('Erreur addStream:', e);
-                    }
-                }
+            // Recréer toutes les connexions peer avec le screenStream
+            const currentPeers = Array.from(peers.entries());
+
+            currentPeers.forEach(([peerId, oldPeer]) => {
+                console.log('Recréation du peer pour partage d\'écran:', peerId);
+
+                // Détruire l'ancienne connexion
+                oldPeer.destroy();
+                peers.delete(peerId);
+
+                // Créer une nouvelle connexion avec le screen stream
+                createPeerWithScreenShare(peerId, true);
             });
 
             // Arrêter automatiquement quand l'utilisateur arrête le partage
@@ -218,6 +212,20 @@ function stopScreenShare() {
     btn.innerHTML = '<span>🖥️</span> Partager l\'écran';
 
     socket.emit('stop-screen-share', { roomId: currentRoomId });
+
+    // Recréer les connexions peer sans le screen stream
+    const currentPeers = Array.from(peers.entries());
+
+    currentPeers.forEach(([peerId, oldPeer]) => {
+        console.log('Recréation du peer après arrêt du partage:', peerId);
+
+        // Détruire l'ancienne connexion
+        oldPeer.destroy();
+        peers.delete(peerId);
+
+        // Créer une nouvelle connexion sans screen stream
+        createPeer(peerId, true);
+    });
 }
 
 // Configuration des listeners Socket.IO
@@ -267,9 +275,8 @@ function setupSocketListeners() {
         if (userId === myUserId) return;
 
         // Créer une connexion peer (nous sommes l'initiateur)
-        if (localStream) {
-            createPeer(userId, true);
-        }
+        // Créer le peer même sans localStream pour recevoir l'audio des autres
+        createPeer(userId, true);
     });
 
     socket.on('user-left', ({ userId, participants: updatedParticipants }) => {
@@ -289,7 +296,7 @@ function setupSocketListeners() {
     socket.on('offer', async ({ from, offer }) => {
         console.log('Offer reçue de:', from);
 
-        if (!peers.has(from) && localStream) {
+        if (!peers.has(from)) {
             createPeer(from, false);
         }
 
@@ -374,6 +381,153 @@ function createPeer(userId, initiator) {
     if (localStream && canSpeak) {
         peerConfig.stream = localStream;
         console.log('LocalStream ajouté au peer config pour:', userId);
+    }
+
+    const peer = new SimplePeer(peerConfig);
+
+    peer.on('signal', (signal) => {
+        if (signal.type === 'offer') {
+            socket.emit('offer', { to: userId, offer: signal });
+        } else if (signal.type === 'answer') {
+            socket.emit('answer', { to: userId, answer: signal });
+        } else {
+            socket.emit('ice-candidate', { to: userId, candidate: signal });
+        }
+    });
+
+    peer.on('stream', (stream) => {
+        console.log('Stream reçu de:', userId, stream);
+
+        // Vérifier si c'est un stream audio ou vidéo
+        const videoTracks = stream.getVideoTracks();
+        const audioTracks = stream.getAudioTracks();
+
+        console.log('Video tracks:', videoTracks.length, 'Audio tracks:', audioTracks.length);
+
+        if (videoTracks.length > 0) {
+            // C'est un partage d'écran
+            console.log('Partage d\'écran reçu de:', userId);
+            const videoElement = document.getElementById('screen-share-video');
+            if (videoElement) {
+                // Arrêter l'ancien stream si existant
+                if (videoElement.srcObject) {
+                    videoElement.srcObject.getTracks().forEach(track => track.stop());
+                }
+
+                videoElement.srcObject = stream;
+                videoElement.onloadedmetadata = () => {
+                    console.log('Vidéo metadata chargée, dimensions:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+                    videoElement.play().catch(e => console.error('Erreur play vidéo:', e));
+                };
+                document.getElementById('screen-share-container').style.display = 'block';
+
+                // Quand le stream se termine
+                videoTracks[0].onended = () => {
+                    console.log('Stream vidéo terminé');
+                    document.getElementById('screen-share-container').style.display = 'none';
+                    videoElement.srcObject = null;
+                };
+            }
+        }
+
+        if (audioTracks.length > 0) {
+            // C'est un stream audio
+            console.log('Stream audio reçu de:', userId);
+
+            // Supprimer l'ancien élément audio s'il existe
+            if (audioElements.has(userId)) {
+                const oldAudio = audioElements.get(userId);
+                oldAudio.pause();
+                oldAudio.srcObject = null;
+                oldAudio.remove();
+                audioElements.delete(userId);
+            }
+
+            // Créer un nouvel élément audio
+            const audio = document.createElement('audio');
+            audio.srcObject = stream;
+            audio.autoplay = true;
+            audio.volume = 1.0;
+            audio.setAttribute('playsinline', '');
+
+            // Ajouter au DOM (nécessaire pour certains navigateurs)
+            audio.style.display = 'none';
+            document.body.appendChild(audio);
+
+            // Stocker l'élément audio
+            audioElements.set(userId, audio);
+
+            // Jouer l'audio
+            audio.play()
+                .then(() => {
+                    console.log('✅ Audio en lecture pour:', userId);
+                })
+                .catch(e => {
+                    console.error('❌ Erreur lecture audio:', e);
+                    // Réessayer après interaction utilisateur
+                    const retryAudio = () => {
+                        audio.play()
+                            .then(() => console.log('✅ Audio démarré après interaction'))
+                            .catch(err => console.error('❌ Erreur retry audio:', err));
+                    };
+                    document.body.addEventListener('click', retryAudio, { once: true });
+                });
+        }
+    });
+
+    peer.on('error', (err) => {
+        console.error('❌ Erreur peer:', err);
+    });
+
+    peer.on('close', () => {
+        console.log('Peer fermé:', userId);
+        peers.delete(userId);
+
+        // Nettoyer l'élément audio
+        if (audioElements.has(userId)) {
+            const audio = audioElements.get(userId);
+            audio.pause();
+            audio.srcObject = null;
+            audio.remove();
+            audioElements.delete(userId);
+        }
+    });
+
+    peer.on('connect', () => {
+        console.log('✅ Peer connecté:', userId);
+    });
+
+    peers.set(userId, peer);
+}
+
+// Créer une connexion WebRTC peer avec partage d'écran
+function createPeerWithScreenShare(userId, initiator) {
+    console.log(`Création peer avec partage d'écran pour ${userId}, initiator: ${initiator}`);
+
+    // Configuration SimplePeer
+    const peerConfig = {
+        initiator: initiator,
+        trickle: true,
+        config: {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:global.stun.twilio.com:3478' }
+            ]
+        },
+        streams: []
+    };
+
+    // Ajouter l'audio si disponible
+    if (localStream && canSpeak) {
+        peerConfig.streams.push(localStream);
+        console.log('LocalStream ajouté au peer config');
+    }
+
+    // Ajouter le partage d'écran si disponible
+    if (screenStream) {
+        peerConfig.streams.push(screenStream);
+        console.log('ScreenStream ajouté au peer config');
     }
 
     const peer = new SimplePeer(peerConfig);

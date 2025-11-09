@@ -870,8 +870,20 @@ function updateDashboard() {
         myTasksContainer.innerHTML = myTasksToday.map(task => `
             <div class="card">
                 <div class="card-header">
-                    <span class="card-title">${task.title}</span>
-                    <span class="badge badge-${task.status.replace('_', '-')}">${formatTaskStatus(task.status)}</span>
+                    <div>
+                        <span class="card-title">${task.title}</span>
+                        <span class="badge badge-${task.status.replace('_', '-')}">${formatTaskStatus(task.status)}</span>
+                    </div>
+                    <div class="card-actions">
+                        ${task.status !== 'completed' ? `
+                            <button class="btn ${task.status === 'pending' ? 'btn-primary' : 'btn-success'}" onclick="updateTaskStatus(${task.id}, '${getNextStatus(task.status)}')">
+                                ${getNextStatus(task.status) === 'in_progress' ? 'Commencer' : 'Terminer'}
+                            </button>
+                        ` : '<span class="badge badge-success">✓ Terminée</span>'}
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p>${task.description}</p>
                 </div>
             </div>
         `).join('');
