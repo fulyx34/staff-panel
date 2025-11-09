@@ -123,13 +123,31 @@ function showDashboard() {
 
 // Mettre à jour l'interface en fonction des permissions
 function updateUIBasedOnPermissions() {
+    console.log('Permissions:', currentUser.permissions);
+
     // Masquer les boutons si pas de permissions
-    document.getElementById('add-sanction-btn').style.display =
-        currentUser.permissions.canManageSanctions ? 'block' : 'none';
-    document.getElementById('add-task-btn').style.display =
-        currentUser.permissions.canManageTasks ? 'block' : 'none';
-    document.getElementById('add-announcement-btn').style.display =
-        currentUser.permissions.canManageAnnouncements ? 'block' : 'none';
+    const sanctionBtn = document.getElementById('add-sanction-btn');
+    if (sanctionBtn) {
+        sanctionBtn.style.display = currentUser.permissions.canManageSanctions ? 'block' : 'none';
+        console.log('Bouton sanction:', sanctionBtn.style.display, 'Permission:', currentUser.permissions.canManageSanctions);
+    } else {
+        console.error('Bouton sanction non trouvé !');
+    }
+
+    const taskBtn = document.getElementById('add-task-btn');
+    if (taskBtn) {
+        taskBtn.style.display = currentUser.permissions.canManageTasks ? 'block' : 'none';
+    }
+
+    const announcementBtn = document.getElementById('add-announcement-btn');
+    if (announcementBtn) {
+        announcementBtn.style.display = currentUser.permissions.canManageAnnouncements ? 'block' : 'none';
+    }
+
+    const absenceBtn = document.getElementById('add-absence-btn');
+    if (absenceBtn) {
+        absenceBtn.style.display = 'block'; // Tout le monde peut poser une absence
+    }
 
     // Afficher l'onglet utilisateurs si l'utilisateur a la permission
     const usersTabBtn = document.getElementById('users-tab-btn');

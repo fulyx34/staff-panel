@@ -4,6 +4,7 @@ let currentRoomId = null;
 let localStream = null;
 let screenStream = null;
 let peers = new Map();
+let audioElements = new Map(); // Stocker les éléments audio
 let isMuted = false;
 let isScreenSharing = false;
 let myUserId = null;
@@ -97,6 +98,13 @@ function leaveMeeting() {
     peers.forEach(peer => peer.destroy());
     peers.clear();
 
+    // Nettoyer tous les éléments audio
+    audioElements.forEach(audio => {
+        audio.pause();
+        audio.srcObject = null;
+    });
+    audioElements.clear();
+
     // Informer le serveur de la fermeture du salon
     socket.emit('close-meeting', { roomId: currentRoomId });
 
@@ -163,9 +171,13 @@ async function toggleScreenShare() {
 
             // Envoyer le stream aux peers existants
             peers.forEach((peer, peerId) => {
-                screenStream.getTracks().forEach(track => {
-                    peer.addTrack(track, screenStream);
-                });
+                try {
+                    // SimplePeer v9 utilise addStream
+                    peer.addStream(screenStream);
+                    console.log('Partage d\'écran envoyé au peer:', peerId);
+                } catch (error) {
+                    console.error('Erreur envoi partage écran:', error);
+                }
             });
 
             // Arrêter automatiquement quand l'utilisateur arrête le partage
@@ -360,10 +372,59 @@ function createPeer(userId, initiator) {
 
     peer.on('stream', (stream) => {
         console.log('Stream reçu de:', userId);
-        // L'audio sera joué automatiquement
-        const audio = new Audio();
-        audio.srcObject = stream;
-        audio.play().catch(e => console.error('Erreur lecture audio:', e));
+
+        // Vérifier si c'est un stream audio ou vidéo
+        const hasVideo = stream.getVideoTracks().length > 0;
+        const hasAudio = stream.getAudioTracks().length > 0;
+
+        if (hasVideo) {
+            // C'est un partage d'écran
+            console.log('Partage d\'écran reçu de:', userId);
+            const videoElement = document.getElementById('screen-share-video');
+            if (videoElement) {
+                videoElement.srcObject = stream;
+                document.getElementById('screen-share-container').style.display = 'block';
+
+                // Quand le stream se termine
+                stream.getVideoTracks()[0].onended = () => {
+                    document.getElementById('screen-share-container').style.display = 'none';
+                    videoElement.srcObject = null;
+                };
+            }
+        }
+
+        if (hasAudio) {
+            // C'est un stream audio
+            console.log('Stream audio reçu de:', userId);
+
+            // Supprimer l'ancien élément audio s'il existe
+            if (audioElements.has(userId)) {
+                const oldAudio = audioElements.get(userId);
+                oldAudio.pause();
+                oldAudio.srcObject = null;
+                audioElements.delete(userId);
+            }
+
+            // Créer un nouvel élément audio
+            const audio = new Audio();
+            audio.srcObject = stream;
+            audio.autoplay = true;
+            audio.volume = 1.0;
+
+            // Stocker l'élément audio
+            audioElements.set(userId, audio);
+
+            // Jouer l'audio
+            audio.play()
+                .then(() => console.log('Audio en lecture pour:', userId))
+                .catch(e => {
+                    console.error('Erreur lecture audio:', e);
+                    // Réessayer après un clic utilisateur
+                    document.body.addEventListener('click', () => {
+                        audio.play().catch(err => console.error('Erreur retry audio:', err));
+                    }, { once: true });
+                });
+        }
     });
 
     peer.on('error', (err) => {
@@ -373,6 +434,14 @@ function createPeer(userId, initiator) {
     peer.on('close', () => {
         console.log('Peer fermé:', userId);
         peers.delete(userId);
+
+        // Nettoyer l'élément audio
+        if (audioElements.has(userId)) {
+            const audio = audioElements.get(userId);
+            audio.pause();
+            audio.srcObject = null;
+            audioElements.delete(userId);
+        }
     });
 
     peers.set(userId, peer);
